@@ -125,6 +125,7 @@ Klipper/
 
 
 #### 自动反推停靠坞坐标使用说明
+> 该功能根据 https://github.com/3dfiyMyLife/Lineux-Hotswap 作者提供的代码修改而来
 
 1. 打开 `dock_locate_calibrate.cfg` 
 
@@ -142,17 +143,29 @@ Klipper/
 
 #### 需进行必要配置的内容
 
-Klipper\MH\calibration.cfg
+- Klipper\MH\calibration.cfg
 
 ```base
 [tools_calibrate]
-pin: ^PF4        #对刀器引脚
+pin: ^PF4                   #对刀器引脚
 
 [gcode_macro _TOOL_CALIB_VARS]
 variable_sensor_x: 290      # 校准传感器的中心X坐标
-variable_sensor_y: 20      # 校准传感器的中心Y坐标
+variable_sensor_y: 20       # 校准传感器的中心Y坐标
+variable_safe_x: 290        # 换刀/待机的安全区域X
+variable_safe_y: 45         # 换刀/待机的安全区域Y
+variable_safe_z: 10.0       # 换刀/待机的安全区域Z高度
+variable_tool_count: 4      # 工具总数 (例如0, 1，共2个)
 ```
-Klipper\MH\extruder.cfg
+
+执行 CALIBRATE_TOOL 可选择单个热端进行校准
+
+执行 CALIBRATE_ALL_TOOLS 可自动校准所有热端
+
+
+
+
+- Klipper\MH\extruder.cfg
 
 需配置多个热端的 heater_pin 和 sensor_pin
 
@@ -165,6 +178,99 @@ PID_CALIBRATE HEATER=extruder2 TARGET=245
 PID_CALIBRATE HEATER=extruder3 TARGET=245
 ```
 
-Klipper\MH\fan.cfg
+- Klipper\MH\fan.cfg
 
 对热端风扇和模型散热风扇进行配置
+
+- Klipper\MH\macro.cfg
+
+需检查是否有同名宏，如果有请在原来的位置删掉或注释
+检查暂停位置是否与停靠坞坐标冲突
+```
+[gcode_macro PAUSE]
+rename_existing: BASE_PAUSE
+gcode:
+    # ----- 参数设置 -----
+    {% set x_park = 280.0 %}         ; 停车位置 X 坐标
+    {% set y_park = 40.0 %}          ; 停车位置 Y 坐标
+
+```
+
+
+- Klipper\MH\swap.cfg
+
+配置热端传感器引脚
+```base
+[gcode_button tool_sensor]
+pin: EBB:PD0
+```
+
+调试速度切换
+```
+variable_feed_fast:        10000 # 工作速度（空驶）
+# variable_feed_fast:       1000  # 测试速度
+variable_feed_slow:        1000  # 工作速度（受力）
+# variable_feed_slow:        80  # 测试速度（受力）
+```
+
+停靠动作距离设置
+```
+variable_dock_shift_x: -3   # 横移开挤出机距离
+variable_dock_dodge_y: 15     # 避让动作的 Y 轴相对位移
+variable_dock_safe_y:  40     # 安全拔出的 Y 轴相对位移
+```
+
+停靠坞坐标设置
+
+```
+# T0 配置
+variable_t0_dock_x: 13.6 
+variable_t0_dock_y: 5 
+
+# T1 配置
+variable_t1_dock_x: 68  
+variable_t1_dock_y: 5
+
+# T2 配置
+variable_t2_dock_x: 123  
+variable_t2_dock_y: 5.1
+
+# T3 配置 
+variable_t3_dock_x: 177 
+variable_t3_dock_y: 5.1 
+```
+
+- Klipper\ebb.cfg
+Can配置文件，注释掉原有的挤出机和风扇配置
+
+- Klipper\ebb.cfg
+由于调整了热床位置，需更改 z_tilt 和 bed_mesh 坐标
+
+```
+[z_tilt]
+points: #测量点的位置 
+  30, 50
+  150, 245
+  270, 50
+
+[bed_mesh]
+mesh_min: 20, 77 
+mesh_max: 280, 280
+```
+
+- Klipper\myvariables.cfg
+
+无需修改，注意， `current_tool` 的值为 -1 时表示工具头未挂载任何热端，请与实际情况同步。
+
+- Klipper\printer.cfg
+
+1. 引入 `[include MH/*.cfg]` 注意需在 `[include mainsail.cfg]` 下方，以便保证所有宏被正确重写。
+
+2. 重写 PRINT_START 和 PRINT_END 宏
+
+
+### 调试流程
+1. 设置所有热端的停靠坞坐标，先进行慢速测试，再进行正常速度测试。
+2. 设置校准器的坐标，手动测试完成后，执行全部校准。
+3. 对热端进行PID校准。
+4. 检查所有热端风扇和模型风扇工作正常。
